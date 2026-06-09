@@ -1,21 +1,30 @@
+# Configuracao compartilhada pelos containers do Airflow.
+# O bloco `x-` nao cria servico; ele apenas evita repetir imagem, env e volumes.
 x-airflow-common: &airflow-common
   image: apache/airflow:2.9.3
   user: "${AIRFLOW_UID:-50000}:0"
   environment:
+    # Usa o executor local, suficiente para este ambiente didatico.
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # Banco usado pelo Airflow para metadados e tambem pela DAG via conexao abaixo.
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
     AIRFLOW__CORE__FERNET_KEY: ""
+    # Mantem novas DAGs pausadas e remove exemplos padrao do Airflow.
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    # Conexao usada pela DAG para gravar/consultar dados no PostgreSQL.
     AIRFLOW_CONN_POSTGRES_NOGTECH: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    # Dependencias Python instaladas na inicializacao dos containers do Airflow.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-pandas requests psycopg2-binary apache-airflow-providers-postgres}
   volumes:
+    # Monta codigo, logs, plugins e dados locais dentro dos containers.
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./data:/opt/airflow/data
 
+# Dependencias comuns dos servicos principais do Airflow.
 x-airflow-depends-on: &airflow-depends-on
   airflow-init:
     condition: service_completed_successfully
@@ -23,6 +32,7 @@ x-airflow-depends-on: &airflow-depends-on
     condition: service_healthy
 
 services:
+  # Banco PostgreSQL usado pelo Airflow e pela tabela final da ETL.
   postgres:
     image: postgres:13
     container_name: nogtech_postgres
@@ -35,12 +45,14 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
+      # Garante que o banco esteja pronto antes do Airflow tentar conectar.
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
     restart: unless-stopped
 
+  # Executa uma vez: migra o banco do Airflow e cria o usuario admin.
   airflow-init:
     <<: *airflow-common
     container_name: nogtech_airflow_init
@@ -59,6 +71,7 @@ services:
       --email admin@nogtech.local || true
       "
 
+  # Interface web do Airflow em http://localhost:8080.
   airflow-webserver:
     <<: *airflow-common
     container_name: nogtech_airflow_webserver
@@ -67,6 +80,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
+      # Verifica se a API de saude do webserver esta respondendo.
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
@@ -74,12 +88,14 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Scheduler responsavel por detectar e executar as tarefas das DAGs.
   airflow-scheduler:
     <<: *airflow-common
     container_name: nogtech_airflow_scheduler
     depends_on: *airflow-depends-on
     command: scheduler
     healthcheck:
+      # Confirma que o processo do scheduler esta ativo dentro do Airflow.
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$${HOSTNAME}"]
       interval: 30s
       timeout: 10s
@@ -88,4 +104,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Volume nomeado para persistir os dados do PostgreSQL entre execucoes.
   postgres-db-volume:
