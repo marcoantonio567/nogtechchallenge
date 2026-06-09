@@ -11,6 +11,8 @@ from nogtech_etl.normalization import (
 )
 
 
+# Testa o caminho feliz da normalizacao das transacoes:
+# CPF, data, mes de referencia, valor em reais, curso e CEP ficam padronizados.
 def test_normalize_transaction_columns_success() -> None:
     df = pd.DataFrame(
         [
@@ -36,6 +38,8 @@ def test_normalize_transaction_columns_success() -> None:
     assert normalized.loc[0, "cep_cobranca"] == "01001000"
 
 
+# Testa uma falha de schema: quando falta coluna obrigatoria, o pipeline deve falhar
+# com mensagem clara em vez de processar dados incompletos.
 def test_normalize_transaction_columns_fails_when_required_column_is_missing() -> None:
     df = pd.DataFrame(
         [
@@ -53,6 +57,8 @@ def test_normalize_transaction_columns_fails_when_required_column_is_missing() -
         normalize_transaction_columns(df)
 
 
+# Testa uma falha de qualidade de dados: CPF, data ou CEP invalidos devem fazer
+# a normalizacao recusar a linha antes de seguir para as proximas etapas.
 def test_normalize_transaction_columns_fails_when_rows_are_invalid() -> None:
     df = pd.DataFrame(
         [
@@ -71,6 +77,8 @@ def test_normalize_transaction_columns_fails_when_rows_are_invalid() -> None:
         normalize_transaction_columns(df)
 
 
+# Testa o tratamento do engajamento mensal: remove duplicidades por CPF/mes e
+# converte metricas numericas que vieram como texto.
 def test_normalize_engagement_columns_deduplicates_and_coerces_numbers() -> None:
     df = pd.DataFrame(
         [
@@ -97,6 +105,8 @@ def test_normalize_engagement_columns_deduplicates_and_coerces_numbers() -> None
     assert normalized.iloc[0]["percentual_conclusao"] == 90
 
 
+# Testa diferentes formatos de valor monetario, incluindo um valor invalido que
+# deve virar None para ser tratado pelas etapas seguintes.
 @pytest.mark.parametrize(
     ("raw_value", "expected"),
     [
@@ -109,6 +119,8 @@ def test_parse_brl(raw_value: str, expected: float | None) -> None:
     assert parse_brl(raw_value) == expected
 
 
+# Testa a regra de LGPD da camada final: CPF valido e mascarado, CPF invalido e
+# recusado com None.
 def test_mask_cpf_anonymizes_valid_cpf_and_rejects_invalid_one() -> None:
     assert mask_cpf("123.456.789-09") == "***.456.789-**"
     assert mask_cpf("123") is None

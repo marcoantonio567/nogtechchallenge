@@ -3,6 +3,8 @@ from __future__ import annotations
 from nogtech_etl.http_client import build_http_session
 
 
+# Testa se a sessao HTTP foi configurada com retry para falhas transientes da
+# BrasilAPI, como 429, 500 e 503.
 def test_build_http_session_configures_retries_for_transient_errors() -> None:
     session = build_http_session()
     adapter = session.get_adapter("https://brasilapi.com.br")
