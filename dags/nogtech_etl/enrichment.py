@@ -13,7 +13,7 @@ from nogtech_etl.config import (
     RELATORIO_FINAL_PATH,
 )
 from nogtech_etl.http_client import build_http_session
-from nogtech_etl.normalization import mask_cpf
+from nogtech_etl.normalization import mask_cpf, normalize_cep
 from nogtech_etl.storage import ensure_runtime_dirs, read_json_cache, write_json_cache
 
 
@@ -54,6 +54,7 @@ def transform_and_enrich(extraction_result: dict[str, Any]) -> dict[str, Any]:
 
     transacoes = pd.read_json(extraction_result["transacoes_path"])
     engajamento = pd.read_json(extraction_result["engajamento_path"])
+    transacoes["cep_cobranca"] = transacoes["cep_cobranca"].apply(normalize_cep)
 
     merged = transacoes.merge(
         engajamento[
