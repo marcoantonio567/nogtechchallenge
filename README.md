@@ -1,15 +1,37 @@
 # NogTech Airflow ETL
 
-Projeto didatico de Big Data para orquestrar um pipeline de ETL com Apache Airflow, Docker Compose, BrasilAPI e PostgreSQL.
+Pipeline didatico de Big Data para orquestrar uma ETL com Apache Airflow,
+Docker Compose, BrasilAPI e PostgreSQL.
 
-A NogTech e uma plataforma ficticia de cursos de tecnologia. A DAG consolida transacoes financeiras com engajamento dos alunos, enriquece cada venda com dados publicos de CEP e feriados nacionais, anonimiza dados pessoais e grava o resultado em uma tabela idempotente.
+A NogTech e uma plataforma ficticia de cursos de tecnologia. O objetivo do
+projeto e consolidar transacoes financeiras com dados de engajamento dos
+alunos, enriquecer as vendas com informacoes publicas de CEP e feriados
+nacionais, anonimizar dados pessoais e persistir o resultado de forma
+idempotente.
 
-## Estrutura
+## Tecnologias
+
+- Apache Airflow 2.9.3
+- PostgreSQL 13
+- Docker Compose
+- Python, pandas, requests e psycopg2
+- BrasilAPI
+
+## Estrutura do projeto
 
 ```text
 .
 |-- dags/
-|   `-- dag_nogtech_etl.py
+|   |-- dag_nogtech_etl.py
+|   `-- nogtech_etl/
+|       |-- config.py
+|       |-- enrichment.py
+|       |-- extract.py
+|       |-- http_client.py
+|       |-- load.py
+|       |-- normalization.py
+|       |-- storage.py
+|       `-- validation.py
 |-- data/
 |   |-- input/
 |   |   |-- transacoes_nogtech.csv
@@ -23,46 +45,61 @@ A NogTech e uma plataforma ficticia de cursos de tecnologia. A DAG consolida tra
 |-- plugins/
 |-- docker-compose.yml
 |-- requirements.txt
+|-- etl_mermaid.md
 `-- README.md
 ```
 
-## Servicos
+> As pastas `data/output`, `data/cache` e `logs` sao geradas/usadas em tempo de
+> execucao. O `docker-compose.yml` monta `./data` em `/opt/airflow/data` dentro
+> dos containers do Airflow.
 
-- Airflow Webserver: http://localhost:8080
-- PostgreSQL: `localhost:5432`
-- Usuario do Airflow: `airflow`
-- Senha do Airflow: `airflow`
-- Banco usado no PostgreSQL: `airflow`
+## Pre-requisitos
+
+- Docker
+- Docker Compose
+- Portas locais livres: `8080` e `5432`
 
 ## Como executar
 
-Na raiz do projeto, suba os containers:
+Na raiz do projeto, suba o ambiente:
 
 ```bash
 docker compose up -d
 ```
 
-Se preferir acompanhar os logs:
+Para acompanhar os logs do Airflow:
 
 ```bash
 docker compose logs -f airflow-scheduler airflow-webserver
 ```
 
-Em Windows com Docker Desktop, normalmente nao e necessario definir `AIRFLOW_UID`. Em Linux, se houver problema de permissao nos volumes, execute antes:
+Em Linux, caso exista problema de permissao nos volumes, defina o usuario do
+Airflow antes de subir os containers:
 
 ```bash
 export AIRFLOW_UID=50000
+docker compose up -d
 ```
 
-## Como acessar o Airflow
+## Portas e acessos
+
+| Servico | URL/porta | Credenciais |
+| --- | --- | --- |
+| Airflow Webserver | http://localhost:8080 | `airflow` / `airflow` |
+| PostgreSQL | `localhost:5432` | `airflow` / `airflow` |
+
+Banco PostgreSQL usado pela aplicacao: `airflow`.
+
+## Como executar a DAG
 
 1. Abra http://localhost:8080.
 2. Entre com usuario `airflow` e senha `airflow`.
 3. Localize a DAG `dag_nogtech_etl`.
-4. Ative a DAG no botao de toggle.
+4. Ative a DAG pelo toggle.
 5. Clique em `Trigger DAG` para executar manualmente.
 
-A DAG tambem esta configurada com agenda diaria `@daily` e `catchup=False`, entao ela nao tenta executar datas historicas automaticamente.
+A DAG tambem esta agendada com `@daily`, `start_date=datetime(2024, 1, 1)` e
+`catchup=False`, evitando execucoes historicas automaticas.
 
 ## Fluxo da DAG
 
@@ -70,90 +107,165 @@ A DAG tambem esta configurada com agenda diaria `@daily` e `catchup=False`, enta
 extract_local_files >> transform_and_enrich >> load_to_postgres >> validate_result
 ```
 
-### extract_local_files
+### 1. Extract
 
-Le os arquivos locais:
+A task `extract_local_files` le as fontes locais:
 
-- `data/input/transacoes_nogtech.csv`, com encoding `latin-1` e delimitador `;`
-- `data/input/engajamento_alunos.json`, com encoding `utf-8`
+- `data/input/transacoes_nogtech.csv`
+  - encoding `latin-1`
+  - delimitador `;`
+- `data/input/engajamento_alunos.json`
+  - encoding `utf-8`
 
-Tambem padroniza CPF, datas, valores monetarios e calcula `mes_referencia` com base em `data_transacao`.
+Nesta etapa tambem sao padronizados CPF, CEP, datas e valores monetarios. A
+coluna `mes_referencia` e calculada a partir de `data_transacao`.
 
-### transform_and_enrich
+Os dados normalizados sao gravados como arquivos intermediarios em:
 
-Faz `LEFT JOIN` entre transacoes e engajamento usando `cpf_aluno` padronizado e `mes_referencia`.
+```text
+data/output/_stage_transacoes.json
+data/output/_stage_engajamento.json
+```
 
-Depois consulta a BrasilAPI:
+### 2. Transform e enriquecimento
+
+A task `transform_and_enrich` faz um `LEFT JOIN` entre transacoes e engajamento
+usando:
+
+```text
+cpf_padronizado + mes_referencia
+```
+
+Com isso, toda transacao e mantida mesmo quando nao existe engajamento no mes
+correspondente. Nesses casos, as metricas de engajamento ficam nulas.
+
+Depois, a task consulta a BrasilAPI:
 
 - CEP: `https://brasilapi.com.br/api/cep/v2/{CEP}`
 - Feriados: `https://brasilapi.com.br/api/feriados/v1/{ANO}`
 
-O resultado recebe:
+Campos adicionados ao resultado:
 
 - `cidade`
 - `uf`
 - `bairro`
 - `venda_em_feriado`
 
-Antes da carga final, o CPF e anonimizado no formato `***.456.789-**` e o campo `nome_aluno` e removido.
+Antes da saida final, o CPF e anonimizado no formato:
 
-### load_to_postgres
-
-Cria, se necessario, a tabela `fato_vendas` no PostgreSQL e grava os dados com chave primaria em `id_transacao`.
-
-A estrategia de idempotencia usa:
-
-```sql
-ON CONFLICT (id_transacao) DO UPDATE
+```text
+***.456.789-**
 ```
 
-Assim, reprocessar o mesmo lote atualiza os registros existentes em vez de duplicar linhas.
+O campo `nome_aluno` nao e carregado no dataset final.
 
-### validate_result
-
-Valida se:
-
-- nao existem duplicidades por `id_transacao`
-- `nome_aluno` nao existe na tabela final
-- todos os CPFs gravados estao anonimizados
-
-## Cache local
-
-Os caches ficam em `data/cache`.
-
-- `ceps_cache.json`: evita consultar o mesmo CEP mais de uma vez.
-- `feriados_cache.json`: evita consultar feriados mais de uma vez por ano.
-
-Esses arquivos sao montados dentro do container em `/opt/airflow/data/cache`, portanto o cache sobrevive a novas execucoes da DAG enquanto a pasta local for mantida.
-
-## Retry e tratamento de falhas
-
-A DAG possui:
-
-- `retries=3`
-- `retry_delay=2 minutos`
-
-As chamadas HTTP usam timeout e retry para erros transientes como `429`, `500`, `502`, `503` e `504`. CEP inexistente retorna campos de localizacao nulos e segue o fluxo. Erros de rede ou indisponibilidade da API fazem a tarefa falhar, permitindo que o Airflow aplique a politica de retry.
-
-## Observabilidade
-
-Pelo Airflow e possivel acompanhar:
-
-- status geral da DAG
-- duracao das tarefas
-- logs por task
-- historico de execucoes
-- tentativas de retry
-
-O arquivo final tambem pode ser conferido em:
+Arquivo final gerado:
 
 ```text
 data/output/relatorio_final.csv
 ```
 
+### 3. Load
+
+A task `load_to_postgres` cria a tabela `fato_vendas`, se ela ainda nao existir,
+e grava os registros no PostgreSQL.
+
+Tabela destino:
+
+```text
+fato_vendas
+```
+
+Principais campos:
+
+- `id_transacao`
+- `cpf_aluno`
+- `data_transacao`
+- `mes_referencia`
+- `valor`
+- `curso`
+- `cep_cobranca`
+- `cidade`
+- `uf`
+- `bairro`
+- `venda_em_feriado`
+- `horas_assistidas`
+- `percentual_conclusao`
+- `data_processamento_utc`
+
+### 4. Validacao
+
+A task `validate_result` executa validacoes depois da carga:
+
+- nao pode existir duplicidade por `id_transacao`
+- a coluna `nome_aluno` nao pode existir na tabela final
+- todos os CPFs carregados devem estar anonimizados
+
+Se alguma regra falhar, a task falha e o erro aparece nos logs do Airflow.
+
+## Estrategia de idempotencia
+
+A idempotencia foi implementada com chave natural e UPSERT.
+
+O campo `id_transacao` e a chave primaria da tabela `fato_vendas`. Durante a
+carga, o pipeline usa:
+
+```sql
+ON CONFLICT (id_transacao) DO UPDATE
+```
+
+Assim, executar a DAG varias vezes para o mesmo lote nao duplica linhas. Se uma
+transacao ja existir, os campos sao atualizados com os valores reprocessados.
+
+Essa estrategia foi escolhida porque `id_transacao` identifica naturalmente uma
+venda e permite reprocessamento simples, previsivel e seguro.
+
+## Cache da BrasilAPI
+
+O cache local fica em `data/cache`:
+
+- `ceps_cache.json`: evita consultar o mesmo CEP mais de uma vez.
+- `feriados_cache.json`: evita consultar feriados mais de uma vez por ano.
+
+O cache e persistido em arquivo JSON e reaproveitado entre execucoes da DAG,
+desde que a pasta local seja mantida.
+
+## Tratamento de falhas
+
+A DAG possui retry configurado no Airflow:
+
+- `retries=3`
+- `retry_delay=2 minutos`
+
+As chamadas HTTP usam timeout de 10 segundos e retry para erros transientes:
+
+- `429`
+- `500`
+- `502`
+- `503`
+- `504`
+
+CEP inexistente (`404`) nao interrompe o pipeline; os campos de localizacao sao
+preenchidos com nulo. Erros de rede, timeout ou indisponibilidade da API fazem a
+task falhar, permitindo que o Airflow aplique a politica de retry.
+
+Os caches JSON sao gravados de forma atomica para reduzir o risco de arquivo
+parcial em caso de falha durante a escrita.
+
+## Observabilidade
+
+Pela interface do Airflow e possivel acompanhar:
+
+- grafo da DAG
+- status de cada task
+- historico de execucoes
+- duracao das tarefas
+- logs detalhados por task
+- tentativas de retry
+
 ## Como verificar no PostgreSQL
 
-Entre no container do PostgreSQL:
+Acesse o container do PostgreSQL:
 
 ```bash
 docker compose exec postgres psql -U airflow -d airflow
@@ -180,13 +292,21 @@ GROUP BY id_transacao
 HAVING COUNT(*) > 1;
 ```
 
-Verifique se o campo `nome_aluno` nao existe no destino:
+Verifique as colunas gravadas:
 
 ```sql
 SELECT column_name
 FROM information_schema.columns
 WHERE table_name = 'fato_vendas'
 ORDER BY ordinal_position;
+```
+
+Verifique se todos os CPFs estao anonimizados:
+
+```sql
+SELECT cpf_aluno
+FROM fato_vendas
+WHERE cpf_aluno !~ '^\*{3}\.\d{3}\.\d{3}-\*{2}$';
 ```
 
 ## Como parar o ambiente
@@ -203,15 +323,17 @@ Para apagar tambem o volume do PostgreSQL:
 docker compose down -v
 ```
 
-## Roteiro de video de ate 5 minutos
+## Roteiro sugerido para video
 
-1. Apresentacao rapida do problema, da empresa ficticia NogTech e da escolha do Apache Airflow.
-2. Mostrar a estrutura do projeto: `dags`, `data/input`, `data/cache`, `data/output`, `docker-compose.yml`.
-3. Subir o ambiente com `docker compose up -d` e abrir o Airflow em http://localhost:8080.
-4. Explicar as quatro tarefas da DAG e disparar `dag_nogtech_etl` manualmente.
-5. Abrir os logs de uma task para mostrar observabilidade, retry configurado e chamadas para BrasilAPI.
-6. Mostrar os arquivos de cache preenchidos em `data/cache`.
-7. Verificar o arquivo `data/output/relatorio_final.csv`, destacando CPF anonimizado e ausencia de `nome_aluno`.
-8. Abrir o PostgreSQL com `psql` e executar `SELECT * FROM fato_vendas ORDER BY id_transacao;`.
-9. Executar a DAG novamente e mostrar que a contagem nao duplica, explicando o `ON CONFLICT`.
-10. Encerrar retomando LGPD, idempotencia, cache e orquestracao pelo Airflow.
+1. Apresentar o desafio da NogTech e a escolha do Apache Airflow.
+2. Mostrar a estrutura do projeto: `dags`, `data/input`, `data/cache`,
+   `data/output` e `docker-compose.yml`.
+3. Subir o ambiente com `docker compose up -d`.
+4. Abrir o Airflow em http://localhost:8080.
+5. Ativar e disparar manualmente a DAG `dag_nogtech_etl`.
+6. Mostrar o grafo e os logs das tasks.
+7. Explicar o enriquecimento com BrasilAPI e os arquivos de cache.
+8. Mostrar o arquivo `data/output/relatorio_final.csv`.
+9. Consultar a tabela `fato_vendas` no PostgreSQL.
+10. Executar a DAG novamente e mostrar que a contagem nao duplica.
+11. Encerrar destacando LGPD, idempotencia, cache, retry e observabilidade.
