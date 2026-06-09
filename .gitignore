@@ -40,6 +40,7 @@ data/input/
 !package.json
 !package-lock.json
 !tsconfig.json
+REQUISITOS.md
 
 # Docker/local runtime files
 *.log
