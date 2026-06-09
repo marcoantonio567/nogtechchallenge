@@ -81,6 +81,18 @@ export AIRFLOW_UID=50000
 docker compose up -d
 ```
 
+## Como executar os testes
+
+Instale as dependencias e execute a suite automatizada:
+
+```bash
+pip install -r requirements.txt
+python -m pytest -q
+```
+
+Os testes cobrem cenarios de sucesso, tratamento de erros e falhas simuladas
+sem depender do Airflow ou do PostgreSQL em execucao.
+
 ## Portas e acessos
 
 | Servico | URL/porta | Credenciais |
