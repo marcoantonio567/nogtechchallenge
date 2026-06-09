@@ -334,18 +334,3 @@ Para apagar tambem o volume do PostgreSQL:
 ```bash
 docker compose down -v
 ```
-
-## Roteiro sugerido para video
-
-1. Apresentar o desafio da NogTech e a escolha do Apache Airflow.
-2. Mostrar a estrutura do projeto: `dags`, `data/input`, `data/cache`,
-   `data/output` e `docker-compose.yml`.
-3. Subir o ambiente com `docker compose up -d`.
-4. Abrir o Airflow em http://localhost:8080.
-5. Ativar e disparar manualmente a DAG `dag_nogtech_etl`.
-6. Mostrar o grafo e os logs das tasks.
-7. Explicar o enriquecimento com BrasilAPI e os arquivos de cache.
-8. Mostrar o arquivo `data/output/relatorio_final.csv`.
-9. Consultar a tabela `fato_vendas` no PostgreSQL.
-10. Executar a DAG novamente e mostrar que a contagem nao duplica.
-11. Encerrar destacando LGPD, idempotencia, cache, retry e observabilidade.
