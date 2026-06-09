@@ -5,9 +5,9 @@ from typing import Any
 
 from airflow.decorators import dag, task
 
-from nogtech_etl.enrichment import transform_and_enrich
 from nogtech_etl.extract import extract_local_files
 from nogtech_etl.load import load_to_postgres
+from nogtech_etl.transform import transform_and_enrich
 from nogtech_etl.validation import validate_result
 
 

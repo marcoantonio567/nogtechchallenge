@@ -25,13 +25,17 @@ idempotente.
 |   |-- dag_nogtech_etl.py
 |   `-- nogtech_etl/
 |       |-- config.py
-|       |-- enrichment.py
-|       |-- extract.py
 |       |-- http_client.py
-|       |-- load.py
 |       |-- normalization.py
 |       |-- storage.py
-|       `-- validation.py
+|       |-- extract/
+|       |   `-- local_files.py
+|       |-- transform/
+|       |   `-- enrichment.py
+|       |-- load/
+|       |   `-- postgres.py
+|       `-- validation/
+|           `-- result.py
 |-- data/
 |   |-- input/
 |   |   |-- transacoes_nogtech.csv

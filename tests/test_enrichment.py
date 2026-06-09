@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import requests
 
-from nogtech_etl import enrichment
+from nogtech_etl.transform import enrichment
 
 
 # Simula uma resposta HTTP da BrasilAPI sem precisar chamar a internet.
