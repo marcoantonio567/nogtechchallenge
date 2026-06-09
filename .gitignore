@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# Airflow local state
+logs/
+airflow.db
+airflow-webserver.pid
+standalone_admin_password.txt
+
+# Project-generated data
+data/cache/
+data/output/
+
+# Raw/local datasets
+data/input/
+*.csv
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
+# Docker/local runtime files
+*.log
+*.pid
+docker-compose.override.yml
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
