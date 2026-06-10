@@ -1,5 +1,8 @@
 # NogTech Airflow ETL
 
+[![Português](https://img.shields.io/badge/Portugu%C3%AAs-ativo-009C3B?style=for-the-badge)](README.md)
+[![English](https://img.shields.io/badge/English-read-1F6FEB?style=for-the-badge)](README.en.md)
+
 Pipeline didatico de Big Data para orquestrar uma ETL com Apache Airflow,
 Docker Compose, BrasilAPI e PostgreSQL.
 
@@ -50,6 +53,7 @@ idempotente.
 |-- docker-compose.yml
 |-- requirements.txt
 |-- etl_mermaid.md
+|-- README.en.md
 `-- README.md
 ```
 
